@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WTG Planner – tylko wybrane turbiny</title>
 
-  <!-- PROSTE STYLE -->
+  <!-- PROSTE STYLE (bez style.css) -->
   <style>
     html, body {
       height: 100%;
@@ -94,6 +94,7 @@
       Wpisz ID turbin (np. <b>208217</b>), po jednym w linii<br>
       albo oddzielone spacją / przecinkiem.
     </div>
+    <!-- TU JEST NAJWAŻNIEJSZA ZMIANA: textarea JEST PUSTA -->
     <textarea id="wtgInput" placeholder="208217
 13460
 13461"></textarea>
@@ -119,10 +120,10 @@
 
     let map;
     let markersLayer;
-    const wtgById = new Map(); // id -> obiekt z lat/lng
+    const wtgById = new Map(); // id -> { id, lat, lng }
 
     async function init() {
-      // mapa startowa – środek mniej więcej na Europę/Polskę
+      // mapa startowa – środek na PL
       map = L.map("map").setView([52.0, 19.0], 5);
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -132,7 +133,7 @@
 
       markersLayer = L.layerGroup().addTo(map);
 
-      // wczytaj data.json, ale NIE rysuj wszystkiego
+      // wczytujemy data.json, ale NIE rysujemy wszystkiego
       try {
         const resp = await fetch("data.json");
         const data = await resp.json();
@@ -140,7 +141,6 @@
 
         list.forEach(w => {
           if (typeof w.lat === "number" && typeof w.lng === "number" && w.id) {
-            // klucze trzymaj jako string
             wtgById.set(String(w.id), w);
           }
         });
@@ -153,7 +153,6 @@
     }
 
     function parseIds(text) {
-      // rozbijamy po spacjach, przecinkach, enterach
       return text
         .split(/[\s,;]+/)
         .map(t => t.trim())
