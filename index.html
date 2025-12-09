@@ -5,7 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>WTG Planner – mapa</title>
 
-  <!-- PROSTE STYLE TYLKO DLA MAPY -->
   <style>
     html, body {
       height: 100%;
@@ -18,7 +17,6 @@
     }
   </style>
 
-  <!-- Leaflet CSS -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -30,7 +28,6 @@
 
   <div id="map"></div>
 
-  <!-- Leaflet JS -->
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
@@ -43,7 +40,6 @@
     async function initMap() {
       console.log("Inicjalizacja mapy...");
 
-      // Tworzymy mapę ZAWSZE
       const map = L.map("map").setView([52.0, 19.0], 6);
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -63,9 +59,7 @@
         console.log("Liczba WTG:", wtgList.length);
 
         wtgList.forEach(wtg => {
-          if (typeof wtg.lat !== "number" || typeof wtg.lng !== "number") {
-            return;
-          }
+          if (typeof wtg.lat !== "number" || typeof wtg.lng !== "number") return;
 
           const marker = L.marker([wtg.lat, wtg.lng]).addTo(map);
           marker.bindPopup(`<b>${wtg.id || "WTG"}</b>`);
@@ -83,5 +77,6 @@
 
     document.addEventListener("DOMContentLoaded", initMap);
   </script>
+
 </body>
 </html>
