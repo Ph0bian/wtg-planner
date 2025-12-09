@@ -1,640 +1,318 @@
-<!DOCTYPE html>
-<html lang="pl">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WTG Planner – plan dnia</title>
+<!DOCTYPE html><html lang="pl"><head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>WTG Planner – plan dnia</title>
 
-  <!-- STYLE -->
-  <style>
-    html, body {
-      height: 100%;
-      margin: 0;
-      padding: 0;
-      font-family: system-ui, sans-serif;
-      background: #000;
-    }
+<style>
+html,body{height:100%;margin:0;padding:0;font-family:system-ui,sans-serif;background:#000}
+#app{width:100%;height:100%;display:none}
+#map{width:100%;height:100%}
+.control-panel{position:absolute;top:10px;left:10px;z-index:1000;background:rgba(0,0,0,.78);color:#fff;padding:10px;border-radius:8px;max-width:360px;box-shadow:0 3px 10px rgba(0,0,0,.6);backdrop-filter:blur(6px)}
+.control-panel h1{font-size:18px;margin:0 0 6px 0}
+.control-panel textarea{width:100%;min-height:70px;resize:vertical;border-radius:4px;border:none;padding:5px;font-family:monospace;font-size:12px}
+.control-panel button{margin-top:6px;margin-right:4px;padding:6px 10px;border-radius:4px;border:none;cursor:pointer;font-size:12px}
+.control-panel button.primary{background:#1f6feb;color:#fff}
+.control-panel button.secondary{background:#444;color:#fff}
+.info{font-size:11px;margin-top:4px;opacity:.85}
+.list-title{font-size:11px;font-weight:600;margin-top:6px}
+.list{margin:2px 0 0 16px;padding:0;max-height:110px;overflow-y:auto;font-size:11px}
+.list li{margin-bottom:2px}
+#loginScreen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:radial-gradient(circle at top,#222 0,#000 60%);color:#fff;z-index:2000}
+.login-box{background:rgba(10,10,10,.9);padding:20px;border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,.7);width:320px}
+.login-box h2{margin:0 0 10px 0;font-size:20px;text-align:center}
+.login-box label{display:block;font-size:13px;margin-top:8px}
+.login-box input{width:100%;padding:6px 8px;margin-top:2px;border-radius:4px;border:1px solid #333;background:#111;color:#fff;font-size:13px}
+.login-box button{width:100%;margin-top:12px;padding:8px;border-radius:6px;border:none;background:#1f6feb;color:#fff;font-size:14px;cursor:pointer}
+.login-box button:hover{background:#255fd1}
+.login-error{margin-top:6px;font-size:12px;color:#ff6b6b;min-height:16px;text-align:center}
+.footer{position:absolute;right:10px;bottom:8px;z-index:1000;font-size:11px;color:#ccc;opacity:.8}
+.footer span{padding:4px 8px;border-radius:6px;background:rgba(0,0,0,.7);box-shadow:0 2px 6px rgba(0,0,0,.5)}
+</style>
 
-    #app {
-      width: 100%;
-      height: 100%;
-      display: none; /* pokażemy dopiero po zalogowaniu */
-    }
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+ integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+</head><body>
 
-    #map {
-      width: 100%;
-      height: 100%;
-    }
-
-    .control-panel {
-      position: absolute;
-      top: 10px;
-      left: 10px;
-      z-index: 1000;
-      background: rgba(0, 0, 0, 0.78);
-      color: #fff;
-      padding: 10px;
-      border-radius: 8px;
-      max-width: 360px;
-      box-shadow: 0 3px 10px rgba(0,0,0,0.6);
-      backdrop-filter: blur(6px);
-    }
-
-    .control-panel h1 {
-      font-size: 18px;
-      margin: 0 0 6px 0;
-    }
-
-    .control-panel textarea {
-      width: 100%;
-      min-height: 70px;
-      resize: vertical;
-      border-radius: 4px;
-      border: none;
-      padding: 5px;
-      font-family: monospace;
-      font-size: 12px;
-    }
-
-    .control-panel button {
-      margin-top: 6px;
-      margin-right: 4px;
-      padding: 6px 10px;
-      border-radius: 4px;
-      border: none;
-      cursor: pointer;
-      font-size: 12px;
-    }
-
-    .control-panel button.primary {
-      background: #1f6feb;
-      color: #fff;
-    }
-
-    .control-panel button.secondary {
-      background: #444;
-      color: #fff;
-    }
-
-    .info {
-      font-size: 11px;
-      margin-top: 4px;
-      opacity: 0.85;
-    }
-
-    .list-title {
-      font-size: 11px;
-      font-weight: 600;
-      margin-top: 6px;
-    }
-
-    .list {
-      margin: 2px 0 0 16px;
-      padding: 0;
-      max-height: 110px;
-      overflow-y: auto;
-      font-size: 11px;
-    }
-
-    .list li {
-      margin-bottom: 2px;
-    }
-
-    .gmaps-url {
-      width: 100%;
-      font-size: 11px;
-      margin-top: 2px;
-      padding: 3px 4px;
-      border-radius: 4px;
-      border: none;
-      background: #111;
-      color: #0f0;
-      box-sizing: border-box;
-    }
-
-    /* ====== LOGIN ====== */
-
-    #loginScreen {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: radial-gradient(circle at top, #222 0, #000 60%);
-      color: #fff;
-      z-index: 2000;
-    }
-
-    .login-box {
-      background: rgba(10,10,10,0.9);
-      padding: 20px;
-      border-radius: 10px;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.7);
-      width: 320px;
-    }
-
-    .login-box h2 {
-      margin: 0 0 10px 0;
-      font-size: 20px;
-      text-align: center;
-    }
-
-    .login-box label {
-      display: block;
-      font-size: 13px;
-      margin-top: 8px;
-    }
-
-    .login-box input {
-      width: 100%;
-      padding: 6px 8px;
-      margin-top: 2px;
-      border-radius: 4px;
-      border: 1px solid #333;
-      background: #111;
-      color: #fff;
-      font-size: 13px;
-    }
-
-    .login-box button {
-      width: 100%;
-      margin-top: 12px;
-      padding: 8px;
-      border-radius: 6px;
-      border: none;
-      background: #1f6feb;
-      color: #fff;
-      font-size: 14px;
-      cursor: pointer;
-    }
-
-    .login-box button:hover {
-      background: #255fd1;
-    }
-
-    .login-error {
-      margin-top: 6px;
-      font-size: 12px;
-      color: #ff6b6b;
-      min-height: 16px;
-      text-align: center;
-    }
-
-    .login-hint {
-      margin-top: 8px;
-      font-size: 11px;
-      opacity: 0.7;
-      text-align: center;
-    }
-
-    /* Stopka */
-    .footer {
-      position: fixed;
-      bottom: 5px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 1500;
-      font-size: 11px;
-      color: #ccc;
-      background: rgba(0,0,0,0.6);
-      padding: 4px 10px;
-      border-radius: 999px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
-    }
-  </style>
-
-  <!-- Leaflet CSS -->
-  <link
-    rel="stylesheet"
-    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
-    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
-    crossorigin=""
-  />
-</head>
-<body>
-
-<!-- ====== EKRAN LOGOWANIA ====== -->
 <div id="loginScreen">
   <div class="login-box">
-    <h2>WTG Planner – logowanie</h2>
-
+    <h2>WTG Planner</h2>
     <label for="loginUser">Login</label>
-    <input id="loginUser" type="text" autocomplete="username" />
-
+    <input id="loginUser" type="text" autocomplete="username"/>
     <label for="loginPass">Hasło</label>
-    <input id="loginPass" type="password" autocomplete="current-password" />
-
+    <input id="loginPass" type="password" autocomplete="current-password"/>
     <button id="loginBtn">Zaloguj</button>
-
     <div id="loginError" class="login-error"></div>
-
-    <div class="login-hint">
-     Nie dla psa kiełbasa
-    </div>
   </div>
 </div>
 
-<!-- ====== APLIKACJA (MAPA + PANEL) ====== -->
 <div id="app">
   <div id="map"></div>
 
   <div class="control-panel">
     <h1>WTG Planner</h1>
-
-    <div class="info">
-      Wpisz ID turbin (np. <b>208217</b>), po jednym w linii<br />
-      albo oddzielone spacją / przecinkiem.
-    </div>
-
+    <div class="info">Wpisz ID turbin (np. <b>208217</b>), po jednym w linii albo oddzielone spacją/przecinkiem.</div>
     <textarea id="wtgInput" placeholder="208217&#10;13460&#10;13461"></textarea>
-
     <div>
-      <button id="showBtn" class="primary">Pokaż plan dnia</button>
+      <button id="showBtn"  class="primary">Pokaż plan dnia</button>
       <button id="clearBtn" class="secondary">Wyczyść</button>
+      <button id="copyBtn"  class="secondary">Kopiuj kolejność ID</button>
     </div>
-
     <div class="info" id="statusInfo"></div>
-
     <div class="list-title">Kolejność klastrów (gdzie jechać po kolei):</div>
     <ol id="clusterList" class="list"></ol>
-
     <div class="list-title">Szczegółowa kolejność turbin:</div>
     <ol id="routeList" class="list"></ol>
-
-    <div class="list-title">Link do trasy w Google Maps (skopiuj):</div>
-    <input id="gmapsUrl" class="gmaps-url" type="text" readonly />
   </div>
 
-  <div class="footer">Phobian by zylo sie lepiej</div>
+  <div class="footer"><span>Phobian</span></div>
 </div>
 
-<!-- Leaflet JS -->
-<script
-  src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
-  integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
-  crossorigin=""
-></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+ integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
 
 <script>
-  /* ========= KONFIG LOGOWANIA =========
-     LOGIN: phobian
-     HASŁO: M0jeWTG!2025
-     HASH = SHA-256("M0jeWTG!2025")
-  */
-  const AUTH_USER = "phobian";
-  const AUTH_HASH = "667055c16915edb21cc23e2157d4129fcc956cd1b41b42de119c40afd180ecae";
+/* LOGOWANIE – login: phobian, hasło: M0jeWTG!2025 (hash tylko tutaj) */
+const AUTH_USER="phobian";
+const AUTH_HASH="667055c16915edb21cc23e2157d4129fcc956cd1b41b42de119c40afd180ecae";
 
-  async function sha256Hex(str) {
-    const enc = new TextEncoder().encode(str);
-    const buf = await crypto.subtle.digest("SHA-256", enc);
-    const arr = Array.from(new Uint8Array(buf));
-    return arr.map(b => b.toString(16).padStart(2, "0")).join("");
-  }
+async function sha256Hex(s){
+  const enc=new TextEncoder().encode(s);
+  const buf=await crypto.subtle.digest("SHA-256",enc);
+  return Array.from(new Uint8Array(buf)).map(b=>b.toString(16).padStart(2,"0")).join("");
+}
 
-  async function handleLogin() {
-    const userInput = document.getElementById("loginUser").value.trim();
-    const passInput = document.getElementById("loginPass").value;
-    const err       = document.getElementById("loginError");
-
-    if (!userInput || !passInput) {
-      err.textContent = "Podaj login i hasło.";
-      return;
+async function handleLogin(){
+  const u=document.getElementById("loginUser").value.trim();
+  const p=document.getElementById("loginPass").value;
+  const e=document.getElementById("loginError");
+  if(!u||!p){e.textContent="Podaj login i hasło.";return;}
+  try{
+    const h=await sha256Hex(p);
+    if(u===AUTH_USER&&h===AUTH_HASH){
+      e.textContent="";
+      document.getElementById("loginScreen").style.display="none";
+      document.getElementById("app").style.display="block";
+      initPlanner();
+    }else{
+      e.textContent="Nieprawidłowy login lub hasło.";
     }
-
-    try {
-      const hash = await sha256Hex(passInput);
-
-      if (userInput === AUTH_USER && hash === AUTH_HASH) {
-        err.textContent = "";
-        document.getElementById("loginScreen").style.display = "none";
-        document.getElementById("app").style.display = "block";
-        init(); // start mapy po zalogowaniu
-      } else {
-        err.textContent = "Nieprawidłowy login lub hasło.";
-      }
-    } catch (e) {
-      console.error(e);
-      err.textContent = "Błąd logowania (SHA-256).";
-    }
+  }catch(err){
+    console.error(err);e.textContent="Błąd logowania.";
   }
+}
 
-  // ====== PLANER TURBIN ======
+/* PLANER TURBIN */
+const CLUSTER_RADIUS_KM=30;
+const statusInfo=document.getElementById("statusInfo");
+const input=document.getElementById("wtgInput");
+const showBtn=document.getElementById("showBtn");
+const clearBtn=document.getElementById("clearBtn");
+const copyBtn=document.getElementById("copyBtn");
+const clusterList=document.getElementById("clusterList");
+const routeList=document.getElementById("routeList");
 
-  const CLUSTER_RADIUS_KM = 30;
+let map,markersLayer,routePolyline;
+const wtgById=new Map();
+let lastRoute=[];
 
-  const statusInfo  = document.getElementById("statusInfo");
-  const input       = document.getElementById("wtgInput");
-  const showBtn     = document.getElementById("showBtn");
-  const clearBtn    = document.getElementById("clearBtn");
-  const clusterList = document.getElementById("clusterList");
-  const routeList   = document.getElementById("routeList");
-  const gmapsUrlEl  = document.getElementById("gmapsUrl");
+async function initPlanner(){
+  map=L.map("map",{zoomControl:false}).setView([52,19],5);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",{
+    maxZoom:19,
+    attribution:"© OpenStreetMap"
+  }).addTo(map);
+  L.control.zoom({position:"topright"}).addTo(map);
+  markersLayer=L.layerGroup().addTo(map);
 
-  let map;
-  let markersLayer;
-  let routePolyline;
-  const wtgById = new Map(); // id -> { id, lat, lng }
-
-  async function init() {
-    // zwykła mapa OSM, bez satelity
-    map = L.map("map", { zoomControl: false }).setView([52.0, 19.0], 5);
-
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19,
-      attribution: "&copy; OpenStreetMap contributors"
-    }).addTo(map);
-
-    // zoom +/-
-    L.control.zoom({ position: "topright" }).addTo(map);
-
-    markersLayer = L.layerGroup().addTo(map);
-
-    // wczytanie data.json
-    try {
-      const resp = await fetch("data.json");
-      const data = await resp.json();
-      const list = data.wtg || [];
-
-      list.forEach(w => {
-        if (w.id && typeof w.lat === "number" && typeof w.lng === "number") {
-          wtgById.set(String(w.id), w);
-        }
-      });
-
-      statusInfo.textContent =
-        "Załadowano " + wtgById.size +
-        " turbin. Wklej ID, a ułożę dzień (klastry ~" +
-        CLUSTER_RADIUS_KM + " km).";
-    } catch (e) {
-      console.error(e);
-      statusInfo.textContent = "Błąd ładowania data.json";
-    }
-  }
-
-  function parseIds(text) {
-    return text
-      .split(/[\s,;]+/)
-      .map(t => t.trim())
-      .filter(t => t.length > 0);
-  }
-
-  // Haversine – odległość w km
-  function distanceKm(a, b) {
-    const R = 6371;
-    const toRad = deg => deg * Math.PI / 180;
-    const dLat = toRad(b.lat - a.lat);
-    const dLng = toRad(b.lng - a.lng);
-    const lat1 = toRad(a.lat);
-    const lat2 = toRad(b.lat);
-
-    const sinDLat = Math.sin(dLat / 2);
-    const sinDLng = Math.sin(dLng / 2);
-
-    const h = sinDLat * sinDLat +
-      Math.cos(lat1) * Math.cos(lat2) *
-      sinDLng * sinDLng;
-
-    const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
-    return R * c;
-  }
-
-  // trasa: start = pierwszy, potem najbliższy
-  function buildRoute(points) {
-    if (points.length === 0) return [];
-
-    const route = [];
-    const unvisited = points.slice();
-
-    let current = unvisited.shift();
-    route.push(current);
-
-    while (unvisited.length > 0) {
-      let bestIndex = 0;
-      let bestDist  = Infinity;
-
-      for (let i = 0; i < unvisited.length; i++) {
-        const d = distanceKm(current, unvisited[i]);
-        if (d < bestDist) {
-          bestDist  = d;
-          bestIndex = i;
-        }
-      }
-
-      current = unvisited.splice(bestIndex, 1)[0];
-      route.push(current);
-    }
-
-    return route;
-  }
-
-  // klastry: seed + wszystkie w promieniu R
-  function buildClusters(points) {
-    const unassigned = points.slice();
-    const clusters   = [];
-
-    while (unassigned.length > 0) {
-      const seed = unassigned.shift();
-      const clusterPoints = [seed];
-      const remaining = [];
-
-      for (const p of unassigned) {
-        const d = distanceKm(seed, p);
-        if (d <= CLUSTER_RADIUS_KM) {
-          clusterPoints.push(p);
-        } else {
-          remaining.push(p);
-        }
-      }
-
-      clusters.push({ points: clusterPoints });
-      unassigned.length = 0;
-      Array.prototype.push.apply(unassigned, remaining);
-    }
-
-    // centroidy
-    clusters.forEach(c => {
-      let lat = 0, lng = 0;
-      c.points.forEach(p => { lat += p.lat; lng += p.lng; });
-      lat /= c.points.length;
-      lng /= c.points.length;
-      c.center = { lat, lng };
-    });
-
-    return clusters;
-  }
-
-  // kolejność klastrów: start = pierwszy, dalej najbliższy
-  function orderClusters(clusters) {
-    if (clusters.length === 0) return [];
-
-    const remaining = clusters.slice();
-    const ordered   = [];
-
-    let current = remaining.shift();
-    ordered.push(current);
-
-    while (remaining.length > 0) {
-      let bestIndex = 0;
-      let bestDist  = Infinity;
-
-      for (let i = 0; i < remaining.length; i++) {
-        const d = distanceKm(current.center, remaining[i].center);
-        if (d < bestDist) {
-          bestDist  = d;
-          bestIndex = i;
-        }
-      }
-
-      current = remaining.splice(bestIndex, 1)[0];
-      ordered.push(current);
-    }
-
-    return ordered;
-  }
-
-  function showSelected() {
-    const ids = parseIds(input.value);
-    markersLayer.clearLayers();
-    clusterList.innerHTML = "";
-    routeList.innerHTML   = "";
-    gmapsUrlEl.value      = "";
-    if (routePolyline) {
-      map.removeLayer(routePolyline);
-      routePolyline = null;
-    }
-
-    if (ids.length === 0) {
-      statusInfo.textContent = "Brak ID do wyświetlenia.";
-      return;
-    }
-
-    const points = [];
-    ids.forEach(idRaw => {
-      const id = String(idRaw);
-      const w  = wtgById.get(id);
-      if (w) {
-        points.push({ id, lat: w.lat, lng: w.lng });
+  try{
+    const resp=await fetch("data.json");
+    const data=await resp.json();
+    (data.wtg||[]).forEach(w=>{
+      if(w.id!=null&&typeof w.lat==="number"&&typeof w.lng==="number"){
+        wtgById.set(String(w.id),w);
       }
     });
-
-    if (points.length === 0) {
-      statusInfo.textContent = "Nie znaleziono żadnej turbiny dla podanych ID.";
-      return;
-    }
-
-    const clusters        = buildClusters(points);
-    const orderedClusters = orderClusters(clusters);
-
-    const fullRoute = [];
-    let   totalDist = 0;
-
-    orderedClusters.forEach((cluster, clusterIndex) => {
-      const localRoute = buildRoute(cluster.points);
-      cluster.route = localRoute;
-
-      for (let i = 1; i < localRoute.length; i++) {
-        totalDist += distanceKm(localRoute[i - 1], localRoute[i]);
-      }
-
-      localRoute.forEach(p => {
-        fullRoute.push({
-          id: p.id,
-          lat: p.lat,
-          lng: p.lng,
-          clusterIndex: clusterIndex
-        });
-      });
-    });
-
-    for (let i = 1; i < orderedClusters.length; i++) {
-      const prevCluster = orderedClusters[i - 1];
-      const currCluster = orderedClusters[i];
-      const prevLast    = prevCluster.route[prevCluster.route.length - 1];
-      const currFirst   = currCluster.route[0];
-      totalDist += distanceKm(prevLast, currFirst);
-    }
-
-    const markers = [];
-    fullRoute.forEach((p, idx) => {
-      const marker = L.marker([p.lat, p.lng]).addTo(markersLayer);
-      marker.bindPopup(
-        "<b>" + (idx + 1) + ". " + p.id + "</b><br/>Klaster " + (p.clusterIndex + 1)
-      );
-      markers.push(marker);
-    });
-
-    if (markers.length > 0) {
-      const group = L.featureGroup(markers);
-      map.fitBounds(group.getBounds().pad(0.15));
-    }
-
-    if (fullRoute.length > 1) {
-      const lineLatLngs = fullRoute.map(p => [p.lat, p.lng]);
-      routePolyline = L.polyline(lineLatLngs, { weight: 2, color: "#00bcd4" }).addTo(map);
-    }
-
-    orderedClusters.forEach((cluster, idx) => {
-      const li = document.createElement("li");
-      const idsInCluster = cluster.route.map(p => p.id).join(", ");
-      li.textContent = "Klaster " + (idx + 1) + ": " +
-        cluster.points.length + " turbiny – " + idsInCluster;
-      clusterList.appendChild(li);
-    });
-
-    fullRoute.forEach((p, idx) => {
-      const li = document.createElement("li");
-      li.textContent = (idx + 1) + ". " + p.id +
-        " (klaster " + (p.clusterIndex + 1) + ")";
-      routeList.appendChild(li);
-    });
-
-    const distRounded = Math.round(totalDist);
-    statusInfo.textContent =
-      "Klastry: " + orderedClusters.length +
-      ", turbiny: " + fullRoute.length +
-      ". Szacowana długość trasy: ~" + distRounded +
-      " km (promień klastra " + CLUSTER_RADIUS_KM + " km).";
-
-    // Link do Google Maps – cała trasa jako /lat,lng/lat,lng/...
-    if (fullRoute.length > 0) {
-      const parts = fullRoute.map(p => p.lat + "," + p.lng);
-      const url = "https://www.google.com/maps/dir/" + parts.join("/");
-      gmapsUrlEl.value = url;
-    }
+    statusInfo.textContent="Załadowano "+wtgById.size+" turbin. Wklej ID, a ułożę dzień (klastry ~"+CLUSTER_RADIUS_KM+" km).";
+  }catch(err){
+    console.error(err);
+    statusInfo.textContent="Błąd ładowania data.json.";
   }
+}
 
-  function clearMap() {
-    markersLayer.clearLayers();
-    clusterList.innerHTML = "";
-    routeList.innerHTML   = "";
-    gmapsUrlEl.value      = "";
-    if (routePolyline) {
-      map.removeLayer(routePolyline);
-      routePolyline = null;
+function parseIds(t){
+  return t.split(/[\s,;]+/).map(x=>x.trim()).filter(x=>x.length>0);
+}
+
+function distanceKm(a,b){
+  const R=6371,toRad=d=>d*Math.PI/180;
+  const dLat=toRad(b.lat-a.lat),dLng=toRad(b.lng-a.lng);
+  const lat1=toRad(a.lat),lat2=toRad(b.lat);
+  const sdLat=Math.sin(dLat/2),sdLng=Math.sin(dLng/2);
+  const h=sdLat*sdLat+Math.cos(lat1)*Math.cos(lat2)*sdLng*sdLng;
+  return 2*R*Math.atan2(Math.sqrt(h),Math.sqrt(1-h));
+}
+
+function buildRoute(points){
+  if(!points.length)return[];
+  const route=[],unv=points.slice();
+  let cur=unv.shift();route.push(cur);
+  while(unv.length){
+    let bi=0,bd=Infinity;
+    for(let i=0;i<unv.length;i++){
+      const d=distanceKm(cur,unv[i]);
+      if(d<bd){bd=d;bi=i;}
     }
-    statusInfo.textContent =
-      "Mapa wyczyszczona. Wklej ID i kliknij „Pokaż plan dnia”.";
+    cur=unv.splice(bi,1)[0];
+    route.push(cur);
   }
+  return route;
+}
 
-  document.addEventListener("DOMContentLoaded", () => {
-    // logowanie
-    document.getElementById("loginBtn")
-      .addEventListener("click", handleLogin);
-
-    document.getElementById("loginPass")
-      .addEventListener("keydown", e => {
-        if (e.key === "Enter") {
-          e.preventDefault();
-          handleLogin();
-        }
-      });
-
-    // planner – przyciski
-    showBtn.addEventListener("click", showSelected);
-    clearBtn.addEventListener("click", clearMap);
+function buildClusters(points){
+  const unassigned=points.slice(),clusters=[];
+  while(unassigned.length){
+    const seed=unassigned.shift();
+    const pts=[seed],rest=[];
+    for(const p of unassigned){
+      const d=distanceKm(seed,p);
+      (d<=CLUSTER_RADIUS_KM?pts:rest).push(p);
+    }
+    clusters.push({points:pts});
+    unassigned.length=0;
+    Array.prototype.push.apply(unassigned,rest);
+  }
+  clusters.forEach(c=>{
+    let lat=0,lng=0;
+    c.points.forEach(p=>{lat+=p.lat;lng+=p.lng;});
+    lat/=c.points.length;lng/=c.points.length;
+    c.center={lat,lng};
   });
+  return clusters;
+}
+
+function orderClusters(clusters){
+  if(!clusters.length)return[];
+  const rem=clusters.slice(),ord=[];
+  let cur=rem.shift();ord.push(cur);
+  while(rem.length){
+    let bi=0,bd=Infinity;
+    for(let i=0;i<rem.length;i++){
+      const d=distanceKm(cur.center,rem[i].center);
+      if(d<bd){bd=d;bi=i;}
+    }
+    cur=rem.splice(bi,1)[0];
+    ord.push(cur);
+  }
+  return ord;
+}
+
+function showSelected(){
+  const ids=parseIds(input.value);
+  markersLayer.clearLayers();
+  clusterList.innerHTML="";
+  routeList.innerHTML="";
+  if(routePolyline){map.removeLayer(routePolyline);routePolyline=null;}
+  lastRoute=[];
+
+  if(!ids.length){statusInfo.textContent="Brak ID do wyświetlenia.";return;}
+
+  const pts=[];
+  ids.forEach(idRaw=>{
+    const id=String(idRaw);
+    const w=wtgById.get(id);
+    if(w)pts.push({id,lat:w.lat,lng:w.lng});
+  });
+
+  if(!pts.length){statusInfo.textContent="Nie znaleziono żadnej turbiny dla podanych ID.";return;}
+
+  const clusters=buildClusters(pts);
+  const ordered=orderClusters(clusters);
+  const fullRoute=[];
+  let total=0;
+
+  ordered.forEach((cl,ci)=>{
+    const r=buildRoute(cl.points);
+    cl.route=r;
+    for(let i=1;i<r.length;i++)total+=distanceKm(r[i-1],r[i]);
+    r.forEach(p=>fullRoute.push({id:p.id,lat:p.lat,lng:p.lng,clusterIndex:ci}));
+  });
+
+  for(let i=1;i<ordered.length;i++){
+    const pc=ordered[i-1],cc=ordered[i];
+    const a=pc.route[pc.route.length-1],b=cc.route[0];
+    total+=distanceKm(a,b);
+  }
+
+  const markers=[];
+  fullRoute.forEach((p,i)=>{
+    const m=L.marker([p.lat,p.lng]).addTo(markersLayer);
+    m.bindPopup("<b>"+(i+1)+". "+p.id+"</b><br/>Klaster "+(p.clusterIndex+1));
+    markers.push(m);
+  });
+
+  if(markers.length){
+    const g=L.featureGroup(markers);
+    map.fitBounds(g.getBounds().pad(0.15));
+  }
+
+  if(fullRoute.length>1){
+    const latlngs=fullRoute.map(p=>[p.lat,p.lng]);
+    routePolyline=L.polyline(latlngs,{weight:2,color:"#00bcd4"}).addTo(map);
+  }
+
+  ordered.forEach((cl,i)=>{
+    const li=document.createElement("li");
+    const idsIn=cl.route.map(p=>p.id).join(", ");
+    li.textContent="Klaster "+(i+1)+": "+cl.points.length+" turbiny – "+idsIn;
+    clusterList.appendChild(li);
+  });
+
+  fullRoute.forEach((p,i)=>{
+    const li=document.createElement("li");
+    li.textContent=(i+1)+". "+p.id+" (klaster "+(p.clusterIndex+1)+")";
+    routeList.appendChild(li);
+  });
+
+  lastRoute=fullRoute.slice();
+  statusInfo.textContent="Klastry: "+ordered.length+", turbiny: "+fullRoute.length+
+    ". Szacowana trasa ~"+Math.round(total)+" km (promień klastra "+CLUSTER_RADIUS_KM+" km).";
+}
+
+function clearMap(){
+  markersLayer.clearLayers();
+  clusterList.innerHTML="";
+  routeList.innerHTML="";
+  if(routePolyline){map.removeLayer(routePolyline);routePolyline=null;}
+  lastRoute=[];
+  statusInfo.textContent="Mapa wyczyszczona. Wklej ID i kliknij „Pokaż plan dnia”.";
+}
+
+function copyRoute(){
+  if(!lastRoute.length){statusInfo.textContent="Brak trasy do skopiowania.";return;}
+  const txt=lastRoute.map(p=>p.id).join(" ");
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(txt).then(
+      ()=>statusInfo.textContent="Skopiowano kolejność ID do schowka.",
+      ()=>statusInfo.textContent="Nie udało się skopiować (clipboard)."
+    );
+  }else{
+    const ta=document.createElement("textarea");
+    ta.value=txt;document.body.appendChild(ta);ta.select();
+    try{document.execCommand("copy");statusInfo.textContent="Skopiowano kolejność ID do schowka.";}
+    catch(e){statusInfo.textContent="Nie udało się skopiować."; }
+    document.body.removeChild(ta);
+  }
+}
+
+document.addEventListener("DOMContentLoaded",()=>{
+  document.getElementById("loginBtn").addEventListener("click",handleLogin);
+  document.getElementById("loginPass").addEventListener("keydown",e=>{
+    if(e.key==="Enter"){e.preventDefault();handleLogin();}
+  });
+  showBtn.addEventListener("click",showSelected);
+  clearBtn.addEventListener("click",clearMap);
+  copyBtn.addEventListener("click",copyRoute);
+});
 </script>
 
-</body>
-</html>
-
+</body></html>
