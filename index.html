@@ -28,7 +28,7 @@
       color: #fff;
       padding: 10px;
       border-radius: 8px;
-      max-width: 320px;
+      max-width: 340px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.4);
       backdrop-filter: blur(4px);
     }
@@ -74,6 +74,18 @@
       margin-top: 4px;
       opacity: 0.8;
     }
+
+    .route-list {
+      margin: 4px 0 0 16px;
+      padding: 0;
+      max-height: 200px;
+      overflow-y: auto;
+      font-size: 11px;
+    }
+
+    .route-list li {
+      margin-bottom: 2px;
+    }
   </style>
 
   <!-- Leaflet CSS -->
@@ -94,15 +106,19 @@
       Wpisz ID turbin (np. <b>208217</b>), po jednym w linii<br>
       albo oddzielone spacją / przecinkiem.
     </div>
-    <!-- TU JEST NAJWAŻNIEJSZA ZMIANA: textarea JEST PUSTA -->
     <textarea id="wtgInput" placeholder="208217
 13460
 13461"></textarea>
     <div>
-      <button id="showBtn" class="primary">Pokaż turbiny</button>
+      <button id="showBtn" class="primary">Pokaż turbiny + kolejność</button>
       <button id="clearBtn" class="secondary">Wyczyść</button>
     </div>
     <div class="info" id="statusInfo"></div>
+
+    <div class="info" style="margin-top:6px;">
+      Proponowana kolejność (od 1 – algorytm „najbliższy następny”):
+    </div>
+    <ol id="routeList" class="route-list"></ol>
   </div>
 
   <!-- Leaflet JS -->
@@ -117,6 +133,7 @@
     const input = document.getElementById("wtgInput");
     const showBtn = document.getElementById("showBtn");
     const clearBtn = document.getElementById("clearBtn");
+    const routeList = document.getElementById("routeList");
 
     let map;
     let markersLayer;
@@ -145,7 +162,7 @@
           }
         });
 
-        statusInfo.textContent = `Załadowano ${wtgById.size} turbin. Wpisz ID, żeby je zobaczyć.`;
+        statusInfo.textContent = `Załadowano ${wtgById.size} turbin. Wpisz ID, żeby zaplanować dzień.`;
       } catch (e) {
         console.error(e);
         statusInfo.textContent = "Błąd ładowania data.json";
@@ -159,40 +176,118 @@
         .filter(t => t.length > 0);
     }
 
+    // Haversine – odległość w km
+    function distanceKm(a, b) {
+      const R = 6371;
+      const toRad = deg => deg * Math.PI / 180;
+      const dLat = toRad(b.lat - a.lat);
+      const dLng = toRad(b.lng - a.lng);
+      const lat1 = toRad(a.lat);
+      const lat2 = toRad(b.lat);
+
+      const sinDLat = Math.sin(dLat / 2);
+      const sinDLng = Math.sin(dLng / 2);
+
+      const h = sinDLat * sinDLat +
+        Math.cos(lat1) * Math.cos(lat2) *
+        sinDLng * sinDLng;
+
+      const c = 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h));
+      return R * c;
+    }
+
+    // prosta heurystyka: zaczynamy od pierwszej turbiny z listy,
+    // potem zawsze bierzemy najbliższą jeszcze nieodwiedzoną
+    function buildRoute(points) {
+      if (points.length === 0) return [];
+
+      const route = [];
+      const unvisited = points.slice(); // kopia
+
+      let current = unvisited.shift(); // start: pierwszy z listy
+      route.push(current);
+
+      while (unvisited.length > 0) {
+        let bestIndex = 0;
+        let bestDist = Infinity;
+
+        for (let i = 0; i < unvisited.length; i++) {
+          const d = distanceKm(current, unvisited[i]);
+          if (d < bestDist) {
+            bestDist = d;
+            bestIndex = i;
+          }
+        }
+
+        current = unvisited.splice(bestIndex, 1)[0];
+        route.push(current);
+      }
+
+      return route;
+    }
+
     function showSelected() {
       const ids = parseIds(input.value);
       markersLayer.clearLayers();
+      routeList.innerHTML = "";
 
       if (ids.length === 0) {
         statusInfo.textContent = "Brak ID do wyświetlenia.";
         return;
       }
 
-      const markers = [];
-
+      // zmapuj ID -> punkty z koordami
+      const points = [];
       ids.forEach(idRaw => {
         const id = String(idRaw);
         const w = wtgById.get(id);
-        if (!w) return;
-
-        const marker = L.marker([w.lat, w.lng]).addTo(markersLayer);
-        marker.bindPopup(`<b>${id}</b>`);
-        markers.push(marker);
+        if (w) {
+          points.push({ id, lat: w.lat, lng: w.lng });
+        }
       });
 
-      if (markers.length === 0) {
+      if (points.length === 0) {
         statusInfo.textContent = "Nie znaleziono żadnej turbiny dla podanych ID.";
         return;
       }
 
-      const group = L.featureGroup(markers);
-      map.fitBounds(group.getBounds().pad(0.1));
+      const route = buildRoute(points);
 
-      statusInfo.textContent = `Wyświetlam ${markers.length} turbin.`;
+      const markers = [];
+      let totalDist = 0;
+
+      for (let i = 0; i < route.length; i++) {
+        const p = route[i];
+
+        // marker z numerem kolejności w popupie
+        const marker = L.marker([p.lat, p.lng]).addTo(markersLayer);
+        marker.bindPopup(`<b>${i + 1}. ${p.id}</b>`);
+        markers.push(marker);
+
+        if (i > 0) {
+          totalDist += distanceKm(route[i - 1], route[i]);
+        }
+      }
+
+      if (markers.length > 0) {
+        const group = L.featureGroup(markers);
+        map.fitBounds(group.getBounds().pad(0.1));
+      }
+
+      // lista kolejności w panelu
+      route.forEach((p, idx) => {
+        const li = document.createElement("li");
+        li.textContent = `${idx + 1}. ${p.id}`;
+        routeList.appendChild(li);
+      });
+
+      const distRounded = Math.round(totalDist);
+      statusInfo.textContent = `Wyświetlam ${route.length} turbin. Szacunkowa długość trasy: ~${distRounded} km (heurystyka).`;
     }
 
     function clearMap() {
       markersLayer.clearLayers();
+      routeList.innerHTML = "";
       statusInfo.textContent = "Mapa wyczyszczona. Wpisz ID i kliknij „Pokaż turbiny”.";
     }
 
