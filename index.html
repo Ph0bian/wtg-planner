@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WTG Planner</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <h1>WTG Planner</h1>
+  <p>Ładowanie danych z JSON...</p>
+
+  <div id="content"></div>
+
+  <script>
+    async function loadData() {
+      const response = await fetch("data.json");
+      const data = await response.json();
+
+      const container = document.getElementById("content");
+      container.innerHTML = "";
+
+      data.tasks.forEach(task => {
+        const div = document.createElement("div");
+        div.className = "task";
+        div.innerHTML = `
+          <h2>${task.title}</h2>
+          <p><b>Opis:</b> ${task.description}</p>
+          <p><b>Czas:</b> ${task.time}</p>
+        `;
+        container.appendChild(div);
+      });
+    }
+
+    loadData();
+  </script>
+
+</body>
+</html>
