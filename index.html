@@ -3,20 +3,80 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WTG Planner – mapa</title>
+  <title>WTG Planner – tylko wybrane turbiny</title>
 
+  <!-- PROSTE STYLE -->
   <style>
     html, body {
       height: 100%;
       margin: 0;
       padding: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
+
     #map {
       width: 100%;
       height: 100%;
     }
+
+    .control-panel {
+      position: absolute;
+      top: 10px;
+      left: 10px;
+      z-index: 1000;
+      background: rgba(0, 0, 0, 0.7);
+      color: #fff;
+      padding: 10px;
+      border-radius: 8px;
+      max-width: 320px;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+      backdrop-filter: blur(4px);
+    }
+
+    .control-panel h1 {
+      font-size: 16px;
+      margin: 0 0 6px 0;
+    }
+
+    .control-panel textarea {
+      width: 100%;
+      min-height: 70px;
+      resize: vertical;
+      border-radius: 4px;
+      border: none;
+      padding: 5px;
+      font-family: monospace;
+      font-size: 12px;
+    }
+
+    .control-panel button {
+      margin-top: 6px;
+      margin-right: 4px;
+      padding: 6px 10px;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      font-size: 12px;
+    }
+
+    .control-panel button.primary {
+      background: #1f6feb;
+      color: white;
+    }
+
+    .control-panel button.secondary {
+      background: #30363d;
+      color: white;
+    }
+
+    .control-panel .info {
+      font-size: 11px;
+      margin-top: 4px;
+      opacity: 0.8;
+    }
   </style>
 
+  <!-- Leaflet CSS -->
   <link
     rel="stylesheet"
     href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -28,6 +88,23 @@
 
   <div id="map"></div>
 
+  <div class="control-panel">
+    <h1>WTG Planner</h1>
+    <div class="info">
+      Wpisz ID turbin (np. <b>208217</b>), po jednym w linii<br>
+      albo oddzielone spacją / przecinkiem.
+    </div>
+    <textarea id="wtgInput" placeholder="208217
+13460
+13461"></textarea>
+    <div>
+      <button id="showBtn" class="primary">Pokaż turbiny</button>
+      <button id="clearBtn" class="secondary">Wyczyść</button>
+    </div>
+    <div class="info" id="statusInfo"></div>
+  </div>
+
+  <!-- Leaflet JS -->
   <script
     src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
     integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
@@ -35,48 +112,96 @@
   ></script>
 
   <script>
-    console.log("WTG Planner: start JS");
+    const statusInfo = document.getElementById("statusInfo");
+    const input = document.getElementById("wtgInput");
+    const showBtn = document.getElementById("showBtn");
+    const clearBtn = document.getElementById("clearBtn");
 
-    async function initMap() {
-      console.log("Inicjalizacja mapy...");
+    let map;
+    let markersLayer;
+    const wtgById = new Map(); // id -> obiekt z lat/lng
 
-      const map = L.map("map").setView([52.0, 19.0], 6);
+    async function init() {
+      // mapa startowa – środek mniej więcej na Europę/Polskę
+      map = L.map("map").setView([52.0, 19.0], 5);
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: "&copy; OpenStreetMap"
       }).addTo(map);
 
-      const markers = [];
+      markersLayer = L.layerGroup().addTo(map);
 
+      // wczytaj data.json, ale NIE rysuj wszystkiego
       try {
-        const response = await fetch("data.json");
-        console.log("Odpowiedź fetch:", response.status);
+        const resp = await fetch("data.json");
+        const data = await resp.json();
+        const list = data.wtg || [];
 
-        const data = await response.json();
-        const wtgList = data.wtg || [];
-
-        console.log("Liczba WTG:", wtgList.length);
-
-        wtgList.forEach(wtg => {
-          if (typeof wtg.lat !== "number" || typeof wtg.lng !== "number") return;
-
-          const marker = L.marker([wtg.lat, wtg.lng]).addTo(map);
-          marker.bindPopup(`<b>${wtg.id || "WTG"}</b>`);
-          markers.push(marker);
+        list.forEach(w => {
+          if (typeof w.lat === "number" && typeof w.lng === "number" && w.id) {
+            // klucze trzymaj jako string
+            wtgById.set(String(w.id), w);
+          }
         });
 
-        if (markers.length > 0) {
-          const group = L.featureGroup(markers);
-          map.fitBounds(group.getBounds().pad(0.1));
-        }
-      } catch (err) {
-        console.error("Błąd przy ładowaniu data.json:", err);
+        statusInfo.textContent = `Załadowano ${wtgById.size} turbin. Wpisz ID, żeby je zobaczyć.`;
+      } catch (e) {
+        console.error(e);
+        statusInfo.textContent = "Błąd ładowania data.json";
       }
     }
 
-    document.addEventListener("DOMContentLoaded", initMap);
-  </script>
+    function parseIds(text) {
+      // rozbijamy po spacjach, przecinkach, enterach
+      return text
+        .split(/[\s,;]+/)
+        .map(t => t.trim())
+        .filter(t => t.length > 0);
+    }
 
+    function showSelected() {
+      const ids = parseIds(input.value);
+      markersLayer.clearLayers();
+
+      if (ids.length === 0) {
+        statusInfo.textContent = "Brak ID do wyświetlenia.";
+        return;
+      }
+
+      const markers = [];
+
+      ids.forEach(idRaw => {
+        const id = String(idRaw);
+        const w = wtgById.get(id);
+        if (!w) return;
+
+        const marker = L.marker([w.lat, w.lng]).addTo(markersLayer);
+        marker.bindPopup(`<b>${id}</b>`);
+        markers.push(marker);
+      });
+
+      if (markers.length === 0) {
+        statusInfo.textContent = "Nie znaleziono żadnej turbiny dla podanych ID.";
+        return;
+      }
+
+      const group = L.featureGroup(markers);
+      map.fitBounds(group.getBounds().pad(0.1));
+
+      statusInfo.textContent = `Wyświetlam ${markers.length} turbin.`;
+    }
+
+    function clearMap() {
+      markersLayer.clearLayers();
+      statusInfo.textContent = "Mapa wyczyszczona. Wpisz ID i kliknij „Pokaż turbiny”.";
+    }
+
+    document.addEventListener("DOMContentLoaded", () => {
+      init();
+      showBtn.addEventListener("click", showSelected);
+      clearBtn.addEventListener("click", clearMap);
+    });
+  </script>
 </body>
 </html>
