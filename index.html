@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WTG Planner – tylko wybrane turbiny</title>
+  <title>WTG Planner – klastry turbin</title>
 
   <!-- PROSTE STYLE (bez style.css) -->
   <style>
@@ -24,11 +24,11 @@
       top: 10px;
       left: 10px;
       z-index: 1000;
-      background: rgba(0, 0, 0, 0.7);
+      background: rgba(0, 0, 0, 0.8);
       color: #fff;
       padding: 10px;
       border-radius: 8px;
-      max-width: 340px;
+      max-width: 360px;
       box-shadow: 0 2px 8px rgba(0,0,0,0.4);
       backdrop-filter: blur(4px);
     }
@@ -72,18 +72,24 @@
     .control-panel .info {
       font-size: 11px;
       margin-top: 4px;
-      opacity: 0.8;
+      opacity: 0.85;
     }
 
-    .route-list {
-      margin: 4px 0 0 16px;
+    .list-title {
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 6px;
+    }
+
+    .list {
+      margin: 2px 0 0 16px;
       padding: 0;
-      max-height: 200px;
+      max-height: 110px;
       overflow-y: auto;
       font-size: 11px;
     }
 
-    .route-list li {
+    .list li {
       margin-bottom: 2px;
     }
   </style>
@@ -110,15 +116,16 @@
 13460
 13461"></textarea>
     <div>
-      <button id="showBtn" class="primary">Pokaż turbiny + kolejność</button>
+      <button id="showBtn" class="primary">Pokaż plan dnia</button>
       <button id="clearBtn" class="secondary">Wyczyść</button>
     </div>
     <div class="info" id="statusInfo"></div>
 
-    <div class="info" style="margin-top:6px;">
-      Proponowana kolejność (od 1 – algorytm „najbliższy następny”):
-    </div>
-    <ol id="routeList" class="route-list"></ol>
+    <div class="list-title">Kolejność klastrów (gdzie jechać po kolei):</div>
+    <ol id="clusterList" class="list"></ol>
+
+    <div class="list-title">Szczegółowa kolejność turbin:</div>
+    <ol id="routeList" class="list"></ol>
   </div>
 
   <!-- Leaflet JS -->
@@ -129,28 +136,36 @@
   ></script>
 
   <script>
+    const CLUSTER_RADIUS_KM = 30; // promień klastra wg Twojego życzenia
+
     const statusInfo = document.getElementById("statusInfo");
     const input = document.getElementById("wtgInput");
     const showBtn = document.getElementById("showBtn");
     const clearBtn = document.getElementById("clearBtn");
+    const clusterList = document.getElementById("clusterList");
     const routeList = document.getElementById("routeList");
 
     let map;
     let markersLayer;
+    let routePolyline;
     const wtgById = new Map(); // id -> { id, lat, lng }
 
     async function init() {
-      // mapa startowa – środek na PL
-      map = L.map("map").setView([52.0, 19.0], 5);
+      // mapa z wyłączonym domyślnym zoomem, dodamy swój w prawym górnym rogu
+      map = L.map("map", { zoomControl: false }).setView([52.0, 19.0], 5);
 
       L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
         maxZoom: 19,
         attribution: "&copy; OpenStreetMap"
       }).addTo(map);
 
+      // plus/minus do przybliżania
+      L.control.zoom({
+        position: "topright"
+      }).addTo(map);
+
       markersLayer = L.layerGroup().addTo(map);
 
-      // wczytujemy data.json, ale NIE rysujemy wszystkiego
       try {
         const resp = await fetch("data.json");
         const data = await resp.json();
@@ -162,7 +177,7 @@
           }
         });
 
-        statusInfo.textContent = `Załadowano ${wtgById.size} turbin. Wpisz ID, żeby zaplanować dzień.`;
+        statusInfo.textContent = `Załadowano ${wtgById.size} turbin. Wklej ID, a zaplanuję dzień wg klastrów (~${CLUSTER_RADIUS_KM} km).`;
       } catch (e) {
         console.error(e);
         statusInfo.textContent = "Błąd ładowania data.json";
@@ -196,8 +211,7 @@
       return R * c;
     }
 
-    // prosta heurystyka: zaczynamy od pierwszej turbiny z listy,
-    // potem zawsze bierzemy najbliższą jeszcze nieodwiedzoną
+    // Prosta trasa wewnątrz zbioru punktów: start = pierwszy, potem zawsze najbliższy
     function buildRoute(points) {
       if (points.length === 0) return [];
 
@@ -226,17 +240,87 @@
       return route;
     }
 
+    // Budowanie klastrów: bierzemy pierwszy punkt, wszystko w promieniu CLUSTER_RADIUS_KM do jednego klastra
+    function buildClusters(points) {
+      const unassigned = points.slice();
+      const clusters = [];
+
+      while (unassigned.length > 0) {
+        const seed = unassigned.shift();
+        const clusterPoints = [seed];
+        const remaining = [];
+
+        for (const p of unassigned) {
+          const d = distanceKm(seed, p);
+          if (d <= CLUSTER_RADIUS_KM) {
+            clusterPoints.push(p);
+          } else {
+            remaining.push(p);
+          }
+        }
+
+        clusters.push({ points: clusterPoints });
+        unassigned.length = 0;
+        Array.prototype.push.apply(unassigned, remaining);
+      }
+
+      // centroidy klastrów
+      clusters.forEach(c => {
+        let lat = 0, lng = 0;
+        c.points.forEach(p => { lat += p.lat; lng += p.lng; });
+        lat /= c.points.length;
+        lng /= c.points.length;
+        c.center = { lat, lng };
+      });
+
+      return clusters;
+    }
+
+    // Ułożenie klastrów w kolejności – start od pierwszego, potem najbliższy kolejny
+    function orderClusters(clusters) {
+      if (clusters.length === 0) return [];
+
+      const remaining = clusters.slice();
+      const ordered = [];
+
+      let current = remaining.shift();
+      ordered.push(current);
+
+      while (remaining.length > 0) {
+        let bestIndex = 0;
+        let bestDist = Infinity;
+
+        for (let i = 0; i < remaining.length; i++) {
+          const d = distanceKm(current.center, remaining[i].center);
+          if (d < bestDist) {
+            bestDist = d;
+            bestIndex = i;
+          }
+        }
+
+        current = remaining.splice(bestIndex, 1)[0];
+        ordered.push(current);
+      }
+
+      return ordered;
+    }
+
     function showSelected() {
       const ids = parseIds(input.value);
       markersLayer.clearLayers();
+      clusterList.innerHTML = "";
       routeList.innerHTML = "";
+      if (routePolyline) {
+        map.removeLayer(routePolyline);
+        routePolyline = null;
+      }
 
       if (ids.length === 0) {
         statusInfo.textContent = "Brak ID do wyświetlenia.";
         return;
       }
 
-      // zmapuj ID -> punkty z koordami
+      // mapujemy ID -> punkty
       const points = [];
       ids.forEach(idRaw => {
         const id = String(idRaw);
@@ -251,44 +335,89 @@
         return;
       }
 
-      const route = buildRoute(points);
+      // klastry i ich kolejność
+      const clusters = buildClusters(points);
+      const orderedClusters = orderClusters(clusters);
 
-      const markers = [];
+      // budujemy trasę globalną: w każdym klastrze lokalna trasa -> składamy
+      const fullRoute = [];
       let totalDist = 0;
 
-      for (let i = 0; i < route.length; i++) {
-        const p = route[i];
+      orderedClusters.forEach((cluster, clusterIndex) => {
+        const localRoute = buildRoute(cluster.points);
+        cluster.route = localRoute;
 
-        // marker z numerem kolejności w popupie
-        const marker = L.marker([p.lat, p.lng]).addTo(markersLayer);
-        marker.bindPopup(`<b>${i + 1}. ${p.id}</b>`);
-        markers.push(marker);
-
-        if (i > 0) {
-          totalDist += distanceKm(route[i - 1], route[i]);
+        // wyliczamy dystans wewnątrz klastra
+        for (let i = 1; i < localRoute.length; i++) {
+          totalDist += distanceKm(localRoute[i - 1], localRoute[i]);
         }
+
+        // dokładamy do trasy globalnej
+        localRoute.forEach(p => {
+          fullRoute.push({
+            id: p.id,
+            lat: p.lat,
+            lng: p.lng,
+            clusterIndex
+          });
+        });
+      });
+
+      // dystans między klastrami (między ostatnim punktu jednego a pierwszym następnego)
+      for (let i = 1; i < orderedClusters.length; i++) {
+        const prevCluster = orderedClusters[i - 1];
+        const currCluster = orderedClusters[i];
+        const prevLast = prevCluster.route[prevCluster.route.length - 1];
+        const currFirst = currCluster.route[0];
+        totalDist += distanceKm(prevLast, currFirst);
       }
+
+      // markerki i linia trasy
+      const markers = [];
+      fullRoute.forEach((p, idx) => {
+        const marker = L.marker([p.lat, p.lng]).addTo(markersLayer);
+        marker.bindPopup(`<b>${idx + 1}. ${p.id}</b><br/>Klaster ${p.clusterIndex + 1}`);
+        markers.push(marker);
+      });
 
       if (markers.length > 0) {
         const group = L.featureGroup(markers);
         map.fitBounds(group.getBounds().pad(0.1));
       }
 
-      // lista kolejności w panelu
-      route.forEach((p, idx) => {
+      if (fullRoute.length > 1) {
+        const lineLatLngs = fullRoute.map(p => [p.lat, p.lng]);
+        routePolyline = L.polyline(lineLatLngs, { weight: 2 }).addTo(map);
+      }
+
+      // lista klastrów w panelu – „jedź najpierw tu, bo X turbin”
+      orderedClusters.forEach((cluster, idx) => {
         const li = document.createElement("li");
-        li.textContent = `${idx + 1}. ${p.id}`;
+        const idsInCluster = cluster.route.map(p => p.id).join(", ");
+        li.textContent = `Klaster ${idx + 1}: ${cluster.points.length} turbiny – ${idsInCluster}`;
+        clusterList.appendChild(li);
+      });
+
+      // lista szczegółowa – kolejność wszystkich turbin
+      fullRoute.forEach((p, idx) => {
+        const li = document.createElement("li");
+        li.textContent = `${idx + 1}. ${p.id} (klaster ${p.clusterIndex + 1})`;
         routeList.appendChild(li);
       });
 
       const distRounded = Math.round(totalDist);
-      statusInfo.textContent = `Wyświetlam ${route.length} turbin. Szacunkowa długość trasy: ~${distRounded} km (heurystyka).`;
+      statusInfo.textContent = `Klastry: ${orderedClusters.length}, turbiny: ${fullRoute.length}. Szacowana długość trasy: ~${distRounded} km (heurystyka, promień klastra ${CLUSTER_RADIUS_KM} km).`;
     }
 
     function clearMap() {
       markersLayer.clearLayers();
+      clusterList.innerHTML = "";
       routeList.innerHTML = "";
-      statusInfo.textContent = "Mapa wyczyszczona. Wpisz ID i kliknij „Pokaż turbiny”.";
+      if (routePolyline) {
+        map.removeLayer(routePolyline);
+        routePolyline = null;
+      }
+      statusInfo.textContent = "Mapa wyczyszczona. Wklej ID i kliknij „Pokaż plan dnia”.";
     }
 
     document.addEventListener("DOMContentLoaded", () => {
