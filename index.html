@@ -3,38 +3,84 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WTG Planner</title>
+  <title>WTG Planner – mapa</title>
+
+  <!-- CSS do Leaflet (mapa) -->
+  <link
+    rel="stylesheet"
+    href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+    crossorigin=""
+  />
+
+  <!-- Twój CSS -->
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
 
-  <h1>WTG Planner</h1>
-  <p>Ładowanie danych z JSON...</p>
+  <div id="map"></div>
 
-  <div id="content"></div>
+  <!-- JS Leaflet -->
+  <script
+    src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+    integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+    crossorigin=""
+  ></script>
 
   <script>
-    async function loadData() {
+    async function loadMap() {
+      // Wczytanie Twojego pliku z koordynatami
       const response = await fetch("data.json");
       const data = await response.json();
 
-      const container = document.getElementById("content");
-      container.innerHTML = "";
+      // oczekuję, że w data.json będzie tablica data.wtg
+      const wtgList = data.wtg || [];
 
-      data.tasks.forEach(task => {
-        const div = document.createElement("div");
-        div.className = "task";
-        div.innerHTML = `
-          <h2>${task.title}</h2>
-          <p><b>Opis:</b> ${task.description}</p>
-          <p><b>Czas:</b> ${task.time}</p>
-        `;
-        container.appendChild(div);
+      // domyślny środek na Polskę
+      let center = [52.0, 19.0];
+
+      if (wtgList.length > 0) {
+        center = [wtgList[0].lat, wtgList[0].lng];
+      }
+
+      // tworzymy mapę
+      const map = L.map("map").setView(center, 6);
+
+      // kafelki OpenStreetMap – darmowe
+      L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+        maxZoom: 19,
+        attribution: "&copy; OpenStreetMap"
+      }).addTo(map);
+
+      const markers = [];
+
+      wtgList.forEach((wtg) => {
+        if (typeof wtg.lat !== "number" || typeof wtg.lng !== "number") {
+          return; // pomijamy śmieci
+        }
+
+        const marker = L.marker([wtg.lat, wtg.lng]).addTo(map);
+
+        const name = wtg.name || wtg.id || "WTG";
+        const park = wtg.park ? `<br><b>Park:</b> ${wtg.park}` : "";
+        const note = wtg.note ? `<br>${wtg.note}` : "";
+
+        marker.bindPopup(`<b>${name}</b>${park}${note}`);
+
+        markers.push(marker);
       });
+
+      // dopasuj mapę do wszystkich turbin
+      if (markers.length > 0) {
+        const group = L.featureGroup(markers);
+        map.fitBounds(group.getBounds().pad(0.1));
+      }
     }
 
-    loadData();
+    loadMap().catch((err) => {
+      console.error("Błąd ładowania mapy:", err);
+    });
   </script>
-
 </body>
 </html>
+
