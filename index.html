@@ -100,6 +100,18 @@
       margin-bottom: 2px;
     }
 
+    .gmaps-url {
+      width: 100%;
+      font-size: 11px;
+      margin-top: 2px;
+      padding: 3px 4px;
+      border-radius: 4px;
+      border: none;
+      background: #111;
+      color: #0f0;
+      box-sizing: border-box;
+    }
+
     /* ====== LOGIN ====== */
 
     #loginScreen {
@@ -175,14 +187,19 @@
       text-align: center;
     }
 
-    #gmapsLinks a {
-      color: #58a6ff;
-      text-decoration: none;
+    /* Stopka */
+    .footer {
+      position: fixed;
+      bottom: 5px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1500;
       font-size: 11px;
-    }
-
-    #gmapsLinks a:hover {
-      text-decoration: underline;
+      color: #ccc;
+      background: rgba(0,0,0,0.6);
+      padding: 4px 10px;
+      border-radius: 999px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.5);
     }
   </style>
 
@@ -212,12 +229,12 @@
     <div id="loginError" class="login-error"></div>
 
     <div class="login-hint">
-      (domyślnie: login <b>phobian</b>, hasło <b>phobian123</b> – możesz zmienić w kodzie)
+      (login <b>phobian</b>, hasło <b>M0jeWTG!2025</b> – możesz później zmienić w kodzie)
     </div>
   </div>
 </div>
 
-<!-- ====== APLIKACJA ====== -->
+<!-- ====== APLIKACJA (MAPA + PANEL) ====== -->
 <div id="app">
   <div id="map"></div>
 
@@ -234,7 +251,6 @@
     <div>
       <button id="showBtn" class="primary">Pokaż plan dnia</button>
       <button id="clearBtn" class="secondary">Wyczyść</button>
-      <button id="gmapsBtn" class="secondary">Google Maps</button>
     </div>
 
     <div class="info" id="statusInfo"></div>
@@ -245,9 +261,11 @@
     <div class="list-title">Szczegółowa kolejność turbin:</div>
     <ol id="routeList" class="list"></ol>
 
-    <div class="list-title">Linki do trasy w Google Maps:</div>
-    <div id="gmapsLinks" class="info"></div>
+    <div class="list-title">Link do trasy w Google Maps (skopiuj):</div>
+    <input id="gmapsUrl" class="gmaps-url" type="text" readonly />
   </div>
+
+  <div class="footer">Phobian by zylo sie lepiej</div>
 </div>
 
 <!-- Leaflet JS -->
@@ -260,11 +278,11 @@
 <script>
   /* ========= KONFIG LOGOWANIA =========
      LOGIN: phobian
-     HASŁO: phobian123
-     HASH = SHA-256("phobian123")
+     HASŁO: M0jeWTG!2025
+     HASH = SHA-256("M0jeWTG!2025")
   */
   const AUTH_USER = "phobian";
-  const AUTH_HASH = "121a2b8d26b5e8f388f029fe0a7115fdf108da3eef5cdcf58ee182f7a305ef4e";
+  const AUTH_HASH = "667055c16915edb21cc23e2157d4129fcc956cd1b41b42de119c40afd180ecae";
 
   async function sha256Hex(str) {
     const enc = new TextEncoder().encode(str);
@@ -290,7 +308,7 @@
         err.textContent = "";
         document.getElementById("loginScreen").style.display = "none";
         document.getElementById("app").style.display = "block";
-        init();
+        init(); // start mapy po zalogowaniu
       } else {
         err.textContent = "Nieprawidłowy login lub hasło.";
       }
@@ -308,32 +326,30 @@
   const input       = document.getElementById("wtgInput");
   const showBtn     = document.getElementById("showBtn");
   const clearBtn    = document.getElementById("clearBtn");
-  const gmapsBtn    = document.getElementById("gmapsBtn");
   const clusterList = document.getElementById("clusterList");
   const routeList   = document.getElementById("routeList");
-  const gmapsLinks  = document.getElementById("gmapsLinks");
+  const gmapsUrlEl  = document.getElementById("gmapsUrl");
 
   let map;
   let markersLayer;
   let routePolyline;
-  const wtgById = new Map();
-  let lastFullRoute = [];
+  const wtgById = new Map(); // id -> { id, lat, lng }
 
   async function init() {
+    // zwykła mapa OSM, bez satelity
     map = L.map("map", { zoomControl: false }).setView([52.0, 19.0], 5);
 
-    L.tileLayer(
-      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{x}/{y}",
-      {
-        maxZoom: 19,
-        attribution: "Tiles © Esri - World Imagery"
-      }
-    ).addTo(map);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
 
+    // zoom +/-
     L.control.zoom({ position: "topright" }).addTo(map);
 
     markersLayer = L.layerGroup().addTo(map);
 
+    // wczytanie data.json
     try {
       const resp = await fetch("data.json");
       const data = await resp.json();
@@ -362,6 +378,7 @@
       .filter(t => t.length > 0);
   }
 
+  // Haversine – odległość w km
   function distanceKm(a, b) {
     const R = 6371;
     const toRad = deg => deg * Math.PI / 180;
@@ -381,6 +398,7 @@
     return R * c;
   }
 
+  // trasa: start = pierwszy, potem najbliższy
   function buildRoute(points) {
     if (points.length === 0) return [];
 
@@ -409,6 +427,7 @@
     return route;
   }
 
+  // klastry: seed + wszystkie w promieniu R
   function buildClusters(points) {
     const unassigned = points.slice();
     const clusters   = [];
@@ -432,6 +451,7 @@
       Array.prototype.push.apply(unassigned, remaining);
     }
 
+    // centroidy
     clusters.forEach(c => {
       let lat = 0, lng = 0;
       c.points.forEach(p => { lat += p.lat; lng += p.lng; });
@@ -443,6 +463,7 @@
     return clusters;
   }
 
+  // kolejność klastrów: start = pierwszy, dalej najbliższy
   function orderClusters(clusters) {
     if (clusters.length === 0) return [];
 
@@ -476,8 +497,7 @@
     markersLayer.clearLayers();
     clusterList.innerHTML = "";
     routeList.innerHTML   = "";
-    gmapsLinks.innerHTML  = "";
-    lastFullRoute = [];
+    gmapsUrlEl.value      = "";
     if (routePolyline) {
       map.removeLayer(routePolyline);
       routePolyline = null;
@@ -534,8 +554,6 @@
       totalDist += distanceKm(prevLast, currFirst);
     }
 
-    lastFullRoute = fullRoute;
-
     const markers = [];
     fullRoute.forEach((p, idx) => {
       const marker = L.marker([p.lat, p.lng]).addTo(markersLayer);
@@ -576,14 +594,20 @@
       ", turbiny: " + fullRoute.length +
       ". Szacowana długość trasy: ~" + distRounded +
       " km (promień klastra " + CLUSTER_RADIUS_KM + " km).";
+
+    // Link do Google Maps – cała trasa jako /lat,lng/lat,lng/...
+    if (fullRoute.length > 0) {
+      const parts = fullRoute.map(p => p.lat + "," + p.lng);
+      const url = "https://www.google.com/maps/dir/" + parts.join("/");
+      gmapsUrlEl.value = url;
+    }
   }
 
   function clearMap() {
     markersLayer.clearLayers();
     clusterList.innerHTML = "";
     routeList.innerHTML   = "";
-    gmapsLinks.innerHTML  = "";
-    lastFullRoute = [];
+    gmapsUrlEl.value      = "";
     if (routePolyline) {
       map.removeLayer(routePolyline);
       routePolyline = null;
@@ -592,44 +616,8 @@
       "Mapa wyczyszczona. Wklej ID i kliknij „Pokaż plan dnia”.";
   }
 
-  function generateGoogleLinks() {
-    gmapsLinks.innerHTML = "";
-
-    if (!lastFullRoute || lastFullRoute.length === 0) {
-      statusInfo.textContent = "Najpierw wygeneruj plan dnia, potem kliknij Google Maps.";
-      return;
-    }
-
-    const maxPerUrl = 10;
-    const total = lastFullRoute.length;
-    let html = "";
-
-    for (let i = 0; i < total; i += maxPerUrl) {
-      const seg = lastFullRoute.slice(i, i + maxPerUrl);
-      if (seg.length === 0) continue;
-
-      let url = "https://www.google.com/maps/dir/";
-      seg.forEach(p => {
-        const coord = p.lat.toFixed(6) + "," + p.lng.toFixed(6);
-        url += encodeURIComponent(coord) + "/";
-      });
-
-      const startIdx = i + 1;
-      const endIdx = i + seg.length;
-      const label = "Segment " + startIdx + "–" + endIdx;
-
-      html +=
-        '<div><a href="' + url +
-        '" target="_blank" rel="noopener noreferrer">' +
-        label + "</a></div>";
-    }
-
-    gmapsLinks.innerHTML = html;
-    statusInfo.textContent =
-      statusInfo.textContent + " | Wygenerowano linki do Google Maps (max 10 punktów na link).";
-  }
-
   document.addEventListener("DOMContentLoaded", () => {
+    // logowanie
     document.getElementById("loginBtn")
       .addEventListener("click", handleLogin);
 
@@ -641,11 +629,12 @@
         }
       });
 
+    // planner – przyciski
     showBtn.addEventListener("click", showSelected);
     clearBtn.addEventListener("click", clearMap);
-    gmapsBtn.addEventListener("click", generateGoogleLinks);
   });
 </script>
 
 </body>
 </html>
+
